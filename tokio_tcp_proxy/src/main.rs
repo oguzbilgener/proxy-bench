@@ -25,6 +25,8 @@ struct Args {
     /// Buffer size for custom implementation
     #[clap(short, long, default_value = "1024")]
     pub buf_size: usize,
+    #[clap(short, long, default_value = "6")]
+    pub thread_count: usize,
 }
 
 impl std::fmt::Display for Args {
@@ -41,8 +43,7 @@ lazy_static! {
     static ref ARGS: Args = Args::parse();
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() {
+async fn listen() {
     println!(
         "listen={}, upstream={}, tokio_copy={}, buf_size={}",
         &ARGS.listen, &ARGS.upstream, ARGS.tokio_copy, ARGS.buf_size
@@ -59,9 +60,9 @@ async fn main() {
 
         tokio::spawn(async move {
             match TcpStream::connect(&ARGS.upstream).await {
-                Ok(tar) => {
+                Ok(target) => {
                     let (mut client_read, mut client_write) = socket.into_split();
-                    let (mut upstream_read, mut upstream_write) = tar.into_split();
+                    let (mut upstream_read, mut upstream_write) = target.into_split();
                     let upstream_handle = tokio::spawn(async move {
                         if ARGS.tokio_copy {
                             let _ = tokio::io::copy(&mut client_read, &mut upstream_write).await;
@@ -86,6 +87,23 @@ async fn main() {
             }
         });
     }
+}
+
+fn main() {
+    let runtime = if ARGS.thread_count > 1 {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(ARGS.thread_count)
+            .enable_all()
+            .build()
+            .unwrap()
+    } else {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+    };
+
+    runtime.block_on(listen());
 }
 
 async fn forward_custom(mut read: OwnedReadHalf, mut write: OwnedWriteHalf) {

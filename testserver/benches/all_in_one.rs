@@ -7,7 +7,6 @@ use tokio::runtime::Runtime;
 
 fn rt() -> tokio::runtime::Runtime {
     tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(6)
         .enable_all()
         .build()
         .unwrap()
@@ -34,9 +33,12 @@ fn make_tokio_proxy_cmd(
     upstream: &str,
     use_copy: bool,
     buf_size: &str,
+    thread_count: usize,
 ) -> io::Result<Child> {
     let mut cmd = Command::new("../tokio_tcp_proxy/target/release/tokio_tcp_proxy");
     let child = cmd
+        .arg("--thread-count")
+        .arg(thread_count.to_string())
         .arg("--listen")
         .arg(format!("127.0.0.1:{}", listen))
         .arg("--upstream")
@@ -142,7 +144,7 @@ fn benchmark_http_1(c: &mut Criterion) {
     with_server(
         &mut group,
         move |group, rt| {
-            group.bench_function("tokio 32K buffer", |b| {
+            group.bench_function("tokio 32K buffer, 16 threads", |b| {
                 let client = reqwest::Client::new();
                 b.iter(|| {
                     let client = client.clone();
@@ -161,13 +163,13 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 16),
     );
 
     with_server(
         &mut group,
         move |group, rt| {
-            group.bench_function("tokio 8K buffer", |b| {
+            group.bench_function("tokio 32K buffer, 1 thread", |b| {
                 let client = reqwest::Client::new();
                 b.iter(|| {
                     let client = client.clone();
@@ -186,13 +188,13 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "8192"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 1),
     );
 
     with_server(
         &mut group,
         move |group, rt| {
-            group.bench_function("tokio with tokio::io::copy (2K buffer)", |b| {
+            group.bench_function("tokio 8K buffer, 16 threads", |b| {
                 let client = reqwest::Client::new();
                 b.iter(|| {
                     let client = client.clone();
@@ -211,7 +213,32 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", true, "0"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "8192", 16),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio with tokio::io::copy (2K buffer), 16 threads", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", true, "0", 16),
     );
 }
 
@@ -272,7 +299,7 @@ fn benchmark_http_2(c: &mut Criterion) {
     with_server(
         &mut group,
         move |group, rt| {
-            group.bench_function("tokio 32K buffer", |b| {
+            group.bench_function("tokio 32K buffer, 16 threads", |b| {
                 let client = reqwest::Client::new();
                 b.iter(|| {
                     let client = client.clone();
@@ -291,7 +318,32 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 16),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio 32K buffer, 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 1),
     );
 
     with_server(
@@ -316,13 +368,13 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "8192"),
+        || make_tokio_proxy_cmd("20000", "20001", false, "8192", 16),
     );
 
     with_server(
         &mut group,
         move |group, rt| {
-            group.bench_function("tokio with tokio::io::copy (2K buffer)", |b| {
+            group.bench_function("tokio with tokio::io::copy (2K buffer), 16 threads", |b| {
                 let client = reqwest::Client::new();
                 b.iter(|| {
                     let client = client.clone();
@@ -341,7 +393,32 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", true, "0"),
+        || make_tokio_proxy_cmd("20000", "20001", true, "0", 16),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio with tokio::io::copy (2K buffer), 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", true, "0", 1),
     );
 }
 
