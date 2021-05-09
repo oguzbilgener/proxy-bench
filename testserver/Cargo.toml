@@ -1,0 +1,22 @@
+[package]
+name = "testserver"
+version = "0.1.0"
+authors = ["Oguz Bilgener <oguz@bilgener.me>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = {version="1", features=["full"]}
+clap = "3.0.0-beta.2"
+lazy_static = "1.4.0"
+hex = "0.4.3"
+hyper = { version = "0.14", features = ["full"] }
+
+[dev-dependencies]
+criterion = { version = "0.3.4", features = ["html_reports"] }
+reqwest = "0.11.3"
+
+[[bench]]
+name = "all_in_one"
+harness = false
