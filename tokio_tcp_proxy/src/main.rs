@@ -22,6 +22,9 @@ struct Args {
     /// Whether to use tokio copy util or custom implementation
     #[clap(short, long)]
     pub tokio_copy: bool,
+    /// Whether to use tokio copy_bidirectional
+    #[clap(long)]
+    pub tokio_copy_bi: bool,
     /// Buffer size for custom implementation
     #[clap(short, long, default_value = "1024")]
     pub buf_size: usize,
@@ -45,8 +48,8 @@ lazy_static! {
 
 async fn listen() {
     println!(
-        "listen={}, upstream={}, tokio_copy={}, buf_size={}",
-        &ARGS.listen, &ARGS.upstream, ARGS.tokio_copy, ARGS.buf_size
+        "listen={}, upstream={}, tokio_copy={}, tokio_copy_bi={}, buf_size={}",
+        &ARGS.listen, &ARGS.upstream, ARGS.tokio_copy, ARGS.tokio_copy_bi, ARGS.buf_size
     );
     let listener = TcpListener::bind(&ARGS.listen)
         .await
@@ -60,26 +63,31 @@ async fn listen() {
 
         tokio::spawn(async move {
             match TcpStream::connect(&ARGS.upstream).await {
-                Ok(target) => {
-                    let (mut client_read, mut client_write) = socket.into_split();
-                    let (mut upstream_read, mut upstream_write) = target.into_split();
-                    let upstream_handle = tokio::spawn(async move {
-                        if ARGS.tokio_copy {
-                            let _ = tokio::io::copy(&mut client_read, &mut upstream_write).await;
-                        } else {
-                            forward_custom(client_read, upstream_write).await;
-                        }
-                    });
-                    let downstream_handle = tokio::spawn(async move {
-                        if ARGS.tokio_copy {
-                            let _ = tokio::io::copy(&mut upstream_read, &mut client_write).await;
-                        } else {
-                            forward_custom(upstream_read, client_write).await;
-                        }
-                    });
+                Ok(mut target) => {
+                    if ARGS.tokio_copy_bi {
+                        let mut socket = socket;
+                        let _ = tokio::io::copy_bidirectional(&mut target, &mut socket).await;
+                    } else {
+                        let (mut client_read, mut client_write) = socket.into_split();
+                        let (mut upstream_read, mut upstream_write) = target.into_split();
+                        let upstream_handle = tokio::spawn(async move {
+                            if ARGS.tokio_copy {
+                                let _ = tokio::io::copy(&mut client_read, &mut upstream_write).await;
+                            } else {
+                                forward_custom(client_read, upstream_write).await;
+                            }
+                        });
+                        let downstream_handle = tokio::spawn(async move {
+                            if ARGS.tokio_copy {
+                                let _ = tokio::io::copy(&mut upstream_read, &mut client_write).await;
+                            } else {
+                                forward_custom(upstream_read, client_write).await;
+                            }
+                        });
 
-                    let _ = upstream_handle.await;
-                    let _ = downstream_handle.await;
+                        let _ = upstream_handle.await;
+                        let _ = downstream_handle.await;
+                    }
                 }
                 Err(_) => {
                     println!("Failed to connect to upstream.");

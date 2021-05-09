@@ -32,6 +32,7 @@ fn make_tokio_proxy_cmd(
     listen: &str,
     upstream: &str,
     use_copy: bool,
+    use_copy_bi: bool,
     buf_size: &str,
     thread_count: usize,
 ) -> io::Result<Child> {
@@ -45,6 +46,8 @@ fn make_tokio_proxy_cmd(
         .arg(format!("127.0.0.1:{}", upstream));
     let child = if use_copy {
         child.arg("--tokio-copy")
+    } else if use_copy_bi {
+        child.arg("--tokio-copy-bi")
     } else {
         child.arg("--buf-size").arg(buf_size)
     };
@@ -163,7 +166,7 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 16),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "32768", 16),
     );
 
     with_server(
@@ -188,7 +191,57 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 1),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "32768", 1),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio 64K buffer, 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "65536", 1),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio 1M buffer, 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "1048576", 1),
     );
 
     with_server(
@@ -213,7 +266,7 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "8192", 16),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "8192", 16),
     );
 
     with_server(
@@ -238,7 +291,57 @@ fn benchmark_http_1(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", true, "0", 16),
+        || make_tokio_proxy_cmd("20000", "20001", true, false, "0", 16),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio with tokio::io::copy (2K buffer), 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", true, false, "0", 1),
+    );
+
+    with_server(
+        &mut group,
+        move |group, rt| {
+            group.bench_function("tokio with tokio::io::copy_bidirectional (2K buffer), 1 thread", |b| {
+                let client = reqwest::Client::new();
+                b.iter(|| {
+                    let client = client.clone();
+                    rt.block_on(async move {
+                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
+                        match res {
+                            Ok(r) => {
+                                let _ = r.text().await;
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        }
+                    });
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", false, true, "0", 1),
     );
 }
 
@@ -318,7 +421,7 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 16),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "32768", 16),
     );
 
     with_server(
@@ -343,7 +446,7 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "32768", 1),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "32768", 1),
     );
 
     with_server(
@@ -368,7 +471,7 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, "8192", 16),
+        || make_tokio_proxy_cmd("20000", "20001", false, false, "8192", 16),
     );
 
     with_server(
@@ -393,7 +496,7 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", true, "0", 16),
+        || make_tokio_proxy_cmd("20000", "20001", true, false, "0", 16),
     );
 
     with_server(
@@ -418,7 +521,7 @@ fn benchmark_http_2(c: &mut Criterion) {
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", true, "0", 1),
+        || make_tokio_proxy_cmd("20000", "20001", true, false, "0", 1),
     );
 }
 

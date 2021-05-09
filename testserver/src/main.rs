@@ -77,7 +77,7 @@ async fn handle(req: Request<Body>) -> Result<Response<Body>, Infallible> {
     }
 }
 
-#[tokio::main]
+#[tokio::main(flavor="current_thread")]
 async fn main() {
     let addr = ARGS
         .listen
