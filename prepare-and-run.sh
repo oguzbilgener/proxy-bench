@@ -17,6 +17,8 @@ cargo build --release --manifest-path ./testserver/Cargo.toml
 
 cargo build --release --manifest-path ./tokio_tcp_proxy/Cargo.toml
 
+cargo build --release --manifest-path ./std_tcp_proxy/Cargo.toml
+
 go build -o go_tcp_proxy/go_tcp_proxy go_tcp_proxy/main.go
 
 cargo +nightly bench --manifest-path ./testserver/Cargo.toml

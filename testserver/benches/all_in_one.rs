@@ -3,14 +3,6 @@ use criterion::{
 };
 use std::io;
 use std::process::{Child, Command};
-use tokio::runtime::Runtime;
-
-fn rt() -> tokio::runtime::Runtime {
-    tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-        .unwrap()
-}
 
 fn make_test_http_server_cmd(listen: &str) -> io::Result<Child> {
     Command::new("../testserver/target/release/testserver")
@@ -54,6 +46,26 @@ fn make_tokio_proxy_cmd(
     child.spawn()
 }
 
+fn make_std_proxy_cmd(
+    listen: &str,
+    upstream: &str,
+    use_copy: bool,
+    buf_size: &str,
+) -> io::Result<Child> {
+    let mut cmd = Command::new("../std_tcp_proxy/target/release/std_tcp_proxy");
+    let child = cmd
+        .arg("--listen")
+        .arg(format!("127.0.0.1:{}", listen))
+        .arg("--upstream")
+        .arg(format!("127.0.0.1:{}", upstream));
+    let child = if use_copy {
+        child.arg("--std-copy")
+    } else {
+        child.arg("--buf-size").arg(buf_size)
+    };
+    child.spawn()
+}
+
 struct Handle(Child);
 
 impl Drop for Handle {
@@ -75,19 +87,24 @@ fn with_server<F, T, P>(
     make_target_command: T,
     make_proxy_command: P,
 ) where
-    F: FnMut(&mut BenchmarkGroup<WallTime>, &Runtime),
+    F: FnMut(&mut BenchmarkGroup<WallTime>),
     T: Fn() -> io::Result<Child>,
     P: Fn() -> io::Result<Child>,
 {
-    let rt = rt();
-
     let _ = run_concurrent_command_until_stop(make_target_command)
         .and_then(|h1| run_concurrent_command_until_stop(make_proxy_command).map(|h2| (h1, h2)))
-        .map(|_| task(group, &rt))
+        .map(|_| task(group))
         .or_else(|err| {
             println!("Failed with error: {}", err);
             Ok::<(), io::Error>(())
         });
+}
+
+fn load_blocking(client: reqwest::blocking::Client, url: &str) {
+    let res = client.get(url).send();
+    if let Ok(r) = res {
+        let _ = r.text();
+    }
 }
 
 fn benchmark_http_1(c: &mut Criterion) {
@@ -96,22 +113,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("direct", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20004/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20004/test1");
                 });
             });
         },
@@ -121,22 +127,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("go", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20003/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20003/test1");
                 });
             });
         },
@@ -146,22 +141,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 32K buffer, 16 threads", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -171,22 +155,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 32K buffer, 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -196,22 +169,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 64K buffer, 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -221,22 +183,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 1M buffer, 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -246,22 +197,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 8K buffer, 16 threads", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -271,22 +211,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio with tokio::io::copy (2K buffer), 16 threads", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -296,22 +225,11 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio with tokio::io::copy (2K buffer), 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
@@ -321,27 +239,47 @@ fn benchmark_http_1(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
-            group.bench_function("tokio with tokio::io::copy_bidirectional (2K buffer), 1 thread", |b| {
-                let client = reqwest::Client::new();
-                b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test1").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
+        move |group| {
+            group.bench_function(
+                "tokio with tokio::io::copy_bidirectional (2K buffer), 1 thread",
+                |b| {
+                    let client = reqwest::blocking::Client::new();
+                    b.iter(|| {
+                        load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                     });
+                },
+            );
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_tokio_proxy_cmd("20000", "20001", false, true, "0", 1),
+    );
+
+    with_server(
+        &mut group,
+        move |group| {
+            group.bench_function("std 64K buffer", |b| {
+                let client = reqwest::blocking::Client::new();
+                b.iter(|| {
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
                 });
             });
         },
         || make_test_http_server_cmd("20001"),
-        || make_tokio_proxy_cmd("20000", "20001", false, true, "0", 1),
+        || make_std_proxy_cmd("20000", "20001", false, "65536"),
+    );
+
+    with_server(
+        &mut group,
+        move |group| {
+            group.bench_function("std with std::io::copy (8K buffer?)", |b| {
+                let client = reqwest::blocking::Client::new();
+                b.iter(|| {
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test1");
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_std_proxy_cmd("20000", "20001", true, "0"),
     );
 }
 
@@ -351,22 +289,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("direct", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20004/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20004/test2");
                 });
             });
         },
@@ -376,22 +303,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("go", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20003/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20003/test2");
                 });
             });
         },
@@ -401,22 +317,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 32K buffer, 16 threads", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
                 });
             });
         },
@@ -426,22 +331,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 32K buffer, 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
                 });
             });
         },
@@ -451,22 +345,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio 8K buffer", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
                 });
             });
         },
@@ -476,22 +359,11 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio with tokio::io::copy (2K buffer), 16 threads", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
                 });
             });
         },
@@ -501,27 +373,44 @@ fn benchmark_http_2(c: &mut Criterion) {
 
     with_server(
         &mut group,
-        move |group, rt| {
+        move |group| {
             group.bench_function("tokio with tokio::io::copy (2K buffer), 1 thread", |b| {
-                let client = reqwest::Client::new();
+                let client = reqwest::blocking::Client::new();
                 b.iter(|| {
-                    let client = client.clone();
-                    rt.block_on(async move {
-                        let res = client.get("http://127.0.0.1:20000/test2").send().await;
-                        match res {
-                            Ok(r) => {
-                                let _ = r.text().await;
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                            }
-                        }
-                    });
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
                 });
             });
         },
         || make_test_http_server_cmd("20001"),
         || make_tokio_proxy_cmd("20000", "20001", true, false, "0", 1),
+    );
+
+    with_server(
+        &mut group,
+        move |group| {
+            group.bench_function("std 64K buffer", |b| {
+                let client = reqwest::blocking::Client::new();
+                b.iter(|| {
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_std_proxy_cmd("20000", "20001", false, "65536"),
+    );
+
+    with_server(
+        &mut group,
+        move |group| {
+            group.bench_function("std with std::io::copy (8K buffer?)", |b| {
+                let client = reqwest::blocking::Client::new();
+                b.iter(|| {
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_std_proxy_cmd("20000", "20001", true, "0"),
     );
 }
 

@@ -32,16 +32,6 @@ struct Args {
     pub thread_count: usize,
 }
 
-impl std::fmt::Display for Args {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "listen={}, upstream={}, tokio_copy={}, buf_size={}",
-            self.listen, self.upstream, self.tokio_copy, self.buf_size
-        )
-    }
-}
-
 lazy_static! {
     static ref ARGS: Args = Args::parse();
 }
