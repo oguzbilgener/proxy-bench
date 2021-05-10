@@ -1,1 +1,0 @@
-{"group_id":"benchmark_http_2","function_id":"tokio 32K buffer, 16 threads","value_str":null,"throughput":{"Elements":1},"full_id":"benchmark_http_2/tokio 32K buffer, 16 threads","directory_name":"benchmark_http_2/tokio 32K buffer, 16 threads","title":"benchmark_http_2/tokio 32K buffer, 16 threads"}
