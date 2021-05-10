@@ -107,8 +107,8 @@ fn load_blocking(client: reqwest::blocking::Client, url: &str) {
     }
 }
 
-fn benchmark_http_1(c: &mut Criterion) {
-    let mut group = c.benchmark_group("benchmark_http_1");
+fn benchmark_http_example_1(c: &mut Criterion) {
+    let mut group = c.benchmark_group("benchmark_http_example_1");
     group.throughput(Throughput::Elements(1u64));
 
     with_server(
@@ -283,8 +283,8 @@ fn benchmark_http_1(c: &mut Criterion) {
     );
 }
 
-fn benchmark_http_2(c: &mut Criterion) {
-    let mut group = c.benchmark_group("benchmark_http_2");
+fn benchmark_http_example_2(c: &mut Criterion) {
+    let mut group = c.benchmark_group("benchmark_http_example_2");
     group.throughput(Throughput::Elements(1u64));
 
     with_server(
@@ -388,6 +388,20 @@ fn benchmark_http_2(c: &mut Criterion) {
     with_server(
         &mut group,
         move |group| {
+            group.bench_function("std 2K buffer", |b| {
+                let client = reqwest::blocking::Client::new();
+                b.iter(|| {
+                    load_blocking(client.clone(), "http://127.0.0.1:20000/test2");
+                });
+            });
+        },
+        || make_test_http_server_cmd("20001"),
+        || make_std_proxy_cmd("20000", "20001", false, "2048"),
+    );
+
+    with_server(
+        &mut group,
+        move |group| {
             group.bench_function("std 64K buffer", |b| {
                 let client = reqwest::blocking::Client::new();
                 b.iter(|| {
@@ -414,5 +428,5 @@ fn benchmark_http_2(c: &mut Criterion) {
     );
 }
 
-criterion_group!(benches, benchmark_http_1, benchmark_http_2);
+criterion_group!(benches, benchmark_http_example_1, benchmark_http_example_2);
 criterion_main!(benches);
