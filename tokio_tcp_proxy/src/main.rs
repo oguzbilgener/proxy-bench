@@ -62,14 +62,16 @@ async fn listen() {
                         let (mut upstream_read, mut upstream_write) = target.into_split();
                         let upstream_handle = tokio::spawn(async move {
                             if ARGS.tokio_copy {
-                                let _ = tokio::io::copy(&mut client_read, &mut upstream_write).await;
+                                let _ =
+                                    tokio::io::copy(&mut client_read, &mut upstream_write).await;
                             } else {
                                 forward_custom(client_read, upstream_write).await;
                             }
                         });
                         let downstream_handle = tokio::spawn(async move {
                             if ARGS.tokio_copy {
-                                let _ = tokio::io::copy(&mut upstream_read, &mut client_write).await;
+                                let _ =
+                                    tokio::io::copy(&mut upstream_read, &mut client_write).await;
                             } else {
                                 forward_custom(upstream_read, client_write).await;
                             }

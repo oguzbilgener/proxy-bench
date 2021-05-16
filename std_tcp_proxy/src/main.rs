@@ -40,7 +40,6 @@ fn main() {
     let _ = socket.set_reuse_address(true);
     let _ = socket.listen(128);
     let listener: TcpListener = socket.into();
-    // let listener = TcpListener::bind(&ARGS.listen).expect("Failed to bind to listen address");
 
     loop {
         let (socket, _) = listener.accept().unwrap();
